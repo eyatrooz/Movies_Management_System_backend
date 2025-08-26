@@ -8,6 +8,7 @@ export const addMovie = async (req, res, next) => {
 
         const newMovie = { title, year, category, time, director, main_cast, rating };
 
+        // Check required fields: title, category, director
         if (!title || !category || !director) {
 
             return res.status(400).json(
@@ -20,6 +21,7 @@ export const addMovie = async (req, res, next) => {
             )
         };
 
+        // Validate year: must be a number in realistic range
         if (!year || isNaN(year) || year < 1900 || year > new Date().getFullYear()) {
 
             return res.status(400).json(
@@ -30,6 +32,7 @@ export const addMovie = async (req, res, next) => {
             );
         }
 
+        // Check if time is provided
         if (!time || time.trim() === '') {
             return res.status(400).json({
                 success: false,
@@ -37,6 +40,7 @@ export const addMovie = async (req, res, next) => {
             });
         }
 
+        // Validate time length
         if (time.length < 2 || time.length > 15) {
             return res.status(400).json({
                 success: false,
@@ -44,6 +48,7 @@ export const addMovie = async (req, res, next) => {
             });
         }
 
+        // Validate main_cast: must be a non-empty array
         if (!main_cast || !Array.isArray(main_cast) || main_cast.length === 0) {
             return res.status(400).json(
                 {
@@ -53,6 +58,7 @@ export const addMovie = async (req, res, next) => {
             )
         };
 
+        // Validate rating: must exist and be between 0 and 10
         if (rating === undefined || rating === null || rating < 0 || rating > 10) {
 
             return res.status(400).json(
@@ -91,6 +97,7 @@ export const viewAllMovies = async (req, res, next) => {
     try {
         const movies = await Movie.find().sort({ year: -1 });
 
+        // Check if no movies exist
         if (movies.length === 0) {
             return res.status(200).json(
                 {
@@ -122,6 +129,7 @@ export const getMovie = async (req, res, next) => {
 
         const { id } = req.params;
 
+        // Check if movie ID was provided in request
         if (!id) {
             return res.status(400).json(
                 {
@@ -134,6 +142,7 @@ export const getMovie = async (req, res, next) => {
 
         const movie = await Movie.findById(id);
 
+        // Check if movie with given ID exists
         if (!movie) {
             return res.status(404).json(
                 {
@@ -329,6 +338,8 @@ export const updateMovie = async (req, res, next) => {
 export const deleteMovie = async (req, res, next) => {
     try {
         const { id } = req.params;
+
+        // Check if movie ID was provided
         if (!id) {
             return res.status(400).json(
                 {
@@ -339,6 +350,8 @@ export const deleteMovie = async (req, res, next) => {
         }
 
         const movieFound = await Movie.findById(id);
+
+        // Check if movie exists in DB
         if (!movieFound) {
             return res.status(404).json(
                 {
@@ -375,6 +388,7 @@ export const searchByTitle = async (req, res, next) => {
     try {
         const { title } = req.query;
 
+        // Check if title exists and is not empty
         if (!title || title.trim() === "") {
             return res.status(400).json(
                 {
@@ -386,8 +400,8 @@ export const searchByTitle = async (req, res, next) => {
         const targetMovie = await Movie.find(
             {
                 title: {
-                    $regex: title,      // $regex : smart search ( partial search) : "search for any title contains '..' "
-                    $options: 'i'       // $options: 'i' : ignorecase
+                    $regex: title,          // $regex allows partial matching of the title      
+                    $options: 'i'          // $options: 'i' makes the search case-insensitive
                 }
             }).sort({ year: -1 });
 
@@ -406,6 +420,132 @@ export const searchByTitle = async (req, res, next) => {
             {
                 success: false,
                 message: "Server error occured while Searching for the movie",
+                error: error.message
+            }
+        );
+
+    }
+
+};
+
+export const searchByCategory = async (req, res, next) => {
+    try {
+        const { category } = req.query;
+
+        //  Check if category exists
+        if (!category || category.trim() === "") {
+            return res.status(400).json(
+                {
+                    success: false,
+                    message: " Please provide a category"
+                }
+            );
+        }
+
+        //  Check if category is a string 
+        if (!isNaN(category)) {
+            return res.status(400).json(
+                {
+                    success: false,
+                    message: "Category must be text, not a number"
+                }
+            );
+        }
+
+        const categorizedMovies = await Movie.find({ category: { $regex: category, $options: 'i' } }).sort({ year: -1 });
+        return res.status(200).json(
+            {
+                success: true,
+                message: `found ${categorizedMovies.length} ${category} movies`,
+                categorizedMovies
+            }
+        );
+
+
+    } catch (error) {
+        return res.status(500).json(
+            {
+                success: false,
+                message: "Server error searching by category",
+                error: error.message
+            }
+        );
+
+
+    }
+};
+
+export const searchByActor = async (req, res, next) => {
+    try {
+
+        const { actor } = req.query;
+
+        // Check if actor is missing, empty, or not a valid string (numbers are not allowed)
+        if (!actor || actor.trim() === "" || !isNaN(actor)) {
+            res.status(400).json(
+                {
+                    success: false,
+                    message: "Actor name must be valid"
+                }
+            );
+        }
+        const actorMovies = await Movie.find(
+            {
+                main_cast:
+                {
+                    $elemMatch:               // $elemMatch searches inside arrays
+                    {
+                        $regex: actor,
+                        $options: 'i'
+                    }
+                }
+            }
+        );
+        res.status(200).json(
+            {
+                success: true,
+                message: `found ${actorMovies.length} movies for ${actor} `,
+                actorMovies
+            }
+        )
+
+    } catch (error) {
+        return res.status(500).json(
+            {
+                success: false,
+                message: "Server error searching by Actor",
+                error: error.message
+            }
+        );
+
+    }
+
+};
+
+export const topRatedMovies = async (req, res, next) => {
+    try {
+
+        const topRatedMovies = await Movie.find(
+            {
+                rating: {
+                    $gte: 7
+                }          // $gte : greater than or equal to
+            }
+        ).sort({ year: -1, rating: -1 }).limit(10);
+
+        return res.status(200).json(
+            {
+                success: true,
+                message: `These are ${topRatedMovies.length} top rated movies`,
+                topRatedMovies
+            }
+        )
+
+    } catch (error) {
+        return res.status(500).json(
+            {
+                success: false,
+                message: "Server error while fetching top rated movies",
                 error: error.message
             }
         );
