@@ -13,12 +13,10 @@ export const addMovie = async (req, res, next) => {
 
             return res.status(400).json(
                 {
-
                     success: false,
                     message: "Missing required fields: title, category, director"
-
                 }
-            )
+            );
         };
 
         // Validate year: must be a number in realistic range
@@ -55,7 +53,7 @@ export const addMovie = async (req, res, next) => {
                     success: false,
                     message: "main_cast must be a non-empty array"
                 }
-            )
+            );
         };
 
         // Validate rating: must exist and be between 0 and 10
@@ -240,12 +238,12 @@ export const updateMovie = async (req, res, next) => {
                 });
             }
 
-            updateMovie.time = time.trim();
+            updateMovie.time = time;
         }
 
         if (category !== undefined) {
             if (!category) {
-                return res.staus(400).json(
+                return res.status(400).json(
                     {
                         success: false,
                         message: "Category cannot be empty"
@@ -254,20 +252,6 @@ export const updateMovie = async (req, res, next) => {
             }
 
             updateMovie.category = category;
-
-        };
-
-        if (time !== undefined) {
-            if (!time) {
-                return res.status(400).json(
-                    {
-                        success: false,
-                        message: "Production cannot be empty"
-                    }
-                )
-            }
-
-            updateMovie.production = time;
 
         };
 
@@ -553,3 +537,128 @@ export const topRatedMovies = async (req, res, next) => {
     }
 
 };
+
+export const searchByYearRange = async (req, res, next) => {
+    try {
+        const { startYear, endYear } = req.query;
+
+        if (!startYear || !endYear) {
+            return res.status(400).json(
+                {
+                    success: false,
+                    message: "Please provide both startYear and endYear"
+                }
+            )
+        };
+        if (isNaN(startYear) || isNaN(endYear)) {
+            return res.status(400).json(
+                {
+                    success: false,
+                    message: "both years must be valid numbers",
+                }
+            );
+        };
+
+        // Query parameters are always STRINGS so convert them to numbers :
+        const start = parseInt(startYear);
+        const end = parseInt(endYear);
+
+        if (start > end) {
+            return res.status(400).json(
+                {
+                    success: false,
+                    message: "Start year cannot be greater than end year",
+                }
+            );
+        };
+        if (start < 1900 || end > new Date().getFullYear()) {
+            return res.status(400).json(
+                {
+                    success: false,
+                    message: "Years must be within range (1900 - current year)",
+                }
+            );
+        };
+        const moviesInRange = await Movie.find(
+            {
+                year: {
+                    $gte: start,                 // greater than or equal to satrt year
+                    $lte: end                   // less than or equal to end year
+                }
+            }
+        ).sort({ year: -1 });
+
+        return res.status(200).json(
+            {
+                success: true,
+                message: `Found ${moviesInRange.length} movies form ( ${start} to ${end}) `,
+                moviesInRange
+            }
+        );
+
+
+    } catch (error) {
+        return res.status(500).json(
+            {
+                success: false,
+                message: "Server error while searching by year range",
+                error: error.message
+            }
+        );
+
+    }
+
+};
+
+export const searchByYear = async (req, res, next) => {
+    try {
+        const { year } = req.query;
+        if (!year) {
+            return res.status(400).json(
+                {
+                    success: false,
+                    message: "Please provide a year to search"
+                }
+            );
+        };
+
+        const targetYear = parseInt(year);
+
+        if (isNaN(targetYear) || targetYear < 1900 || targetYear > new Date().getFullYear()) {
+            return res.status(400).json(
+                {
+                    success: false,
+                    message: "year must be a valid number within ( 1900 - current year)",
+                }
+            );
+        };
+
+        const movies = await Movie.find(
+            {
+                year: {
+                    $eq: targetYear
+                }
+            }
+        ).sort({ year: -1 });
+        return res.status(200).json(
+            {
+                success: true,
+                message: `Found ${movies.length} movies in ${targetYear}`,
+                movies
+            }
+        );
+
+    } catch (error) {
+        return res.status(500).json(
+            {
+                success: false,
+                message: "Server error while searching by year",
+                error: error.message
+            }
+        );
+
+    }
+
+}
+
+
