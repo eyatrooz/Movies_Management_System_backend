@@ -10,8 +10,7 @@ import {
     searchByCategory,
     searchByActor,
     topRatedMovies,
-    searchByYearRange,
-    searchByYear
+
 
 } from "../Controllers/movies.controller.js";
 
@@ -24,8 +23,6 @@ router.get("/allMovies", viewAllMovies);
 router.get("/title", searchByTitle);
 router.get("/category", searchByCategory);
 router.get("/actor", searchByActor);
-router.get("/searchByYearRange", searchByYearRange);
-router.get("/searchByYear", searchByYear);
 router.get("/topRated", topRatedMovies);
 router.get("/:id", getMovie);
 router.put("/:id", updateMovie);

@@ -93,7 +93,41 @@ export const addMovie = async (req, res, next) => {
 export const viewAllMovies = async (req, res, next) => {
 
     try {
-        const movies = await Movie.find().sort({ year: -1 });
+        // read query params: ?page=1&limit=10
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+
+        if (page < 1) {
+            return res.status(400).json({
+                success: false,
+                message: "Page must be a positive number starting from 1"
+            });
+        }
+
+        if (limit < 1 || limit > 100) {  // Prevent huge requests
+            return res.status(400).json({
+                success: false,
+                message: "Limit must be between 1 and 100"
+            });
+        }
+
+        // get total count of movies for metadata
+        const totalMovies = await Movie.countDocuments();
+
+
+        const totalPages = Math.ceil(totalMovies / limit);
+
+        // If someone requests page 999 but you only have 5 pages:
+        if (page > totalPages && totalMovies > 0) {
+            return res.status(400).json({
+                success: false,
+                message: `Page ${page} does not exist. Total pages available: ${totalPages}`
+            });
+        }
+
+        const skip = (page - 1) * limit;
+
+        const movies = await Movie.find().sort({ year: -1 }).skip(skip).limit(limit);
 
         // Check if no movies exist
         if (movies.length === 0) {
@@ -101,14 +135,29 @@ export const viewAllMovies = async (req, res, next) => {
                 {
                     success: true,
                     message: "No movies found",
+                    page,
+                    totalPage: Math.ceil(totalMovies / limit),
+                    totalMovies,
                     allMovies: []
                 }
             );
         }
         return res.status(200).json({
             success: true,
-            message: `Found ${movies.length} movies`,
-            allMovies: movies
+            message: `Page ${page} of ${totalPages}`,
+            data: {
+                movies,
+                pagination: {
+                    currentPage: page,
+                    totalPages,
+                    totalMovies,
+                    moviesPerPage: limit,
+                    hasNextPage: page < totalPages,
+                    hasPrevPage: page > 1,
+                    nextPage: page < totalPages ? page + 1 : null,
+                    prevPage: page > 1 ? page - 1 : null
+                }
+            }
         });
 
     } catch (error) {
@@ -370,6 +419,7 @@ export const deleteMovie = async (req, res, next) => {
 // function to search for a movie by it's title
 export const searchByTitle = async (req, res, next) => {
     try {
+
         const { title } = req.query;
 
         // Check if title exists and is not empty
@@ -377,23 +427,83 @@ export const searchByTitle = async (req, res, next) => {
             return res.status(400).json(
                 {
                     success: false,
-                    message: "provied the movie title"
+                    message: "Provide the movie title"
                 }
             );
+        };
+
+        // pagination structure
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        if (page < 1) {
+            return res.status(400).json({
+                success: false,
+                message: "Page must be a positive number starting from 1"
+            });
         }
-        const targetMovie = await Movie.find(
+
+        if (limit < 1 || limit > 100) {  // Prevent huge requests
+            return res.status(400).json({
+                success: false,
+                message: "Limit must be between 1 and 100"
+            });
+        };
+
+        const totalMovies = await Movie.countDocuments({ title: { $regex: title, $options: 'i' } });
+
+        if (totalMovies === 0) {
+            return res.status(200).json({
+                success: true,
+                message: `No movies found matching "${title}"`,
+                data: { movies: [] },
+                pagination: {
+                    currentPage: page,
+                    totalPages: 0,
+                    totalMovies: 0,
+                    moviesPerPage: limit
+                }
+            });
+        }
+
+        const totalPages = Math.ceil(totalMovies / limit);
+
+        // If someone requests page 999 but you only have 50 pages:
+        if (page > totalPages) {
+            return res.status(400).json(
+                {
+                    success: false,
+                    message: ` Page ${page} does not exist. Available pages: ${totalPages}`
+                }
+            );
+        };
+
+        const movies = await Movie.find(
             {
                 title: {
                     $regex: title,          // $regex allows partial matching of the title      
                     $options: 'i'          // $options: 'i' makes the search case-insensitive
                 }
-            }).sort({ year: -1 });
+            }).sort({ year: -1 }).skip(skip).limit(limit);
 
         return res.status(200).json(
             {
                 success: true,
-                message: `Found ${targetMovie.length} movies matching ${title}`,
-                targetMovie
+                message: `Found ${movies.length} movies matching ${title}`,
+                data: {
+                    movies
+                },
+                pagination: {
+                    currentPage: page,
+                    totalPages,
+                    totalMovies,
+                    moviesPerPage: limit,
+                    hasNextPage: page < totalPages,
+                    hasPrevPage: page > 1,
+                    nextPage: page < totalPages ? page + 1 : null,
+                    prevPage: page > 1 ? page - 1 : null
+                }
             }
 
         );
@@ -436,12 +546,76 @@ export const searchByCategory = async (req, res, next) => {
             );
         }
 
-        const categorizedMovies = await Movie.find({ category: { $regex: category, $options: 'i' } }).sort({ year: -1 });
+        // pagination structure
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        if (page < 1) {
+            return res.status(400).json({
+                success: false,
+                message: "Page must be a positive number starting from 1"
+            });
+        };
+
+        if (limit < 1 || limit > 100) {  // Prevent huge requests
+            return res.status(400).json({
+                success: false,
+                message: "Limit must be between 1 and 100"
+            });
+        };
+        const totalMovies = await Movie.countDocuments({ category: { $regex: category, $options: 'i' } });
+
+        if (totalMovies === 0) {
+            return res.status(200).json({
+                success: true,
+                message: `No movies found matching "${title}"`,
+                data: { movies: [] },
+                pagination: {
+                    currentPage: page,
+                    totalPages: 0,
+                    totalMovies: 0,
+                    moviesPerPage: limit
+                }
+            });
+        };
+
+        const totalPages = Math.ceil(totalMovies / limit);
+
+        // If someone requests page 999 but you only have 50 pages:
+        if (page > totalPages) {
+            return res.status(400).json(
+                {
+                    success: false,
+                    message: ` Page ${page} does not exist. Available pages: ${totalPages}`
+                }
+            );
+        };
+
+        const categorizedMovies = await Movie.find(
+            {
+                category: {
+                    $regex: category, $options: 'i'
+                }
+            }).sort({ year: -1 }).skip(skip).limit(limit);
+
         return res.status(200).json(
             {
                 success: true,
-                message: `found ${categorizedMovies.length} ${category} movies`,
-                categorizedMovies
+                message: `Page ${page} of  ${category} movies : `,
+                data: {
+                    categorizedMovies
+                },
+                pagination: {
+                    currentPage: page,
+                    totalPages,
+                    totalMovies,
+                    moviesPerPage: limit,
+                    hasNextPage: page < totalPages,
+                    hasPrevPage: page > 1,
+                    nextPage: page < totalPages ? page + 1 : null,
+                    prevPage: page > 1 ? page - 1 : null
+                }
             }
         );
 
@@ -459,6 +633,7 @@ export const searchByCategory = async (req, res, next) => {
     }
 };
 
+// function to search by actor 
 export const searchByActor = async (req, res, next) => {
     try {
 
@@ -472,7 +647,54 @@ export const searchByActor = async (req, res, next) => {
                     message: "Actor name must be valid"
                 }
             );
-        }
+        };
+
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        if (page < 1) {
+            return res.status(400).json({
+                success: false,
+                message: "Page must be a positive number starting from 1"
+            });
+        };
+
+        if (limit < 1 || limit > 100) {  // Prevent huge requests
+            return res.status(400).json({
+                success: false,
+                message: "Limit must be between 1 and 100"
+            });
+        };
+
+        const totalMovies = await Movie.countDocuments({ main_cast: { $elemMatch: { $regex: actor, $options: 'i' } } });
+
+        if (totalMovies === 0) {
+            return res.status(200).json({
+                success: true,
+                message: `No movies found matching "${title}"`,
+                data: { movies: [] },
+                pagination: {
+                    currentPage: page,
+                    totalPages: 0,
+                    totalMovies: 0,
+                    moviesPerPage: limit
+                }
+            });
+        };
+
+        const totalPages = Math.ceil(totalMovies / limit);
+
+        // If someone requests page 999 but you only have 50 pages:
+        if (page > totalPages) {
+            return res.status(400).json(
+                {
+                    success: false,
+                    message: ` Page ${page} does not exist. Available pages: ${totalPages}`
+                }
+            );
+        };
+
         const actorMovies = await Movie.find(
             {
                 main_cast:
@@ -484,14 +706,27 @@ export const searchByActor = async (req, res, next) => {
                     }
                 }
             }
-        );
+        ).skip(skip).limit(limit);
+
         res.status(200).json(
             {
                 success: true,
-                message: `found ${actorMovies.length} movies for ${actor} `,
-                actorMovies
+                message: `Page ${page} of movies for ${actor} :`,
+                data: {
+                    actorMovies
+                },
+                pagination: {
+                    currentPage: page,
+                    totalPages,
+                    totalMovies,
+                    moviesPerPage: limit,
+                    hasNextPage: page < totalPages,
+                    hasPrevPage: page > 1,
+                    nextPage: page < totalPages ? page + 1 : null,
+                    prevPage: page > 1 ? page - 1 : null
+                }
             }
-        )
+        );
 
     } catch (error) {
         return res.status(500).json(
@@ -501,29 +736,91 @@ export const searchByActor = async (req, res, next) => {
                 error: error.message
             }
         );
-
     }
-
 };
 
+// function to find top rated movies 
 export const topRatedMovies = async (req, res, next) => {
     try {
+
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        if (page < 1) {
+            return res.status(400).json({
+                success: false,
+                message: "Page must be a positive number starting from 1"
+            });
+        }
+
+        if (limit < 1 || limit > 100) {  // Prevent huge requests
+            return res.status(400).json({
+                success: false,
+                message: "Limit must be between 1 and 100"
+            });
+        }
+
+        const totalMovies = await Movie.countDocuments({ rating: { $gte: 7 } });
+        const totalPages = Math.ceil(totalMovies / limit);
+
+        // If someone requests page 999 but you only have 5 pages:
+        if (page > totalPages && totalMovies > 0) {
+            return res.status(400).json({
+                success: false,
+                message: `Page ${page} does not exist. Total pages available: ${totalPages}`
+            });
+        }
 
         const topRatedMovies = await Movie.find(
             {
                 rating: {
-                    $gte: 7
-                }          // $gte : greater than or equal to
+                    $gte: 7         // $gte : greater than or equal to
+                }
             }
-        ).sort({ year: -1, rating: -1 }).limit(10);
+        ).sort({ year: -1, rating: -1 }).skip(skip).limit(limit);
+
+        if (totalMovies === 0) {
+            return res.status(200).json({
+                success: true,
+                message: "No top-rated movies found",
+                data: {
+                    topRatedMovies: [],
+                    pagination: {
+                        currentPage: page,
+                        totalPages: 0,
+                        totalMovies: 0,
+                        moviesPerPage: limit,
+                        hasNextPage: false,
+                        hasPrevPage: false,
+                        nextPage: null,
+                        prevPage: null
+                    }
+                }
+            });
+        }
 
         return res.status(200).json(
             {
                 success: true,
-                message: `These are ${topRatedMovies.length} top rated movies`,
-                topRatedMovies
+                message: `Top Rated Movies page ${page} of ${totalPages} :`,
+                data: {
+                    topRatedMovies,
+                    pagination: {
+                        currentPage: page,
+                        totalPages,
+                        totalMovies,
+                        moviesPerPage: limit,
+                        hasNextPage: page < totalPages,
+                        hasPrevPage: page > 1,
+                        nextPage: page < totalPages ? page + 1 : null,
+                        prevPage: page > 1 ? page - 1 : null
+
+                    }
+
+                }
             }
-        )
+        );
 
     } catch (error) {
         return res.status(500).json(
@@ -533,132 +830,11 @@ export const topRatedMovies = async (req, res, next) => {
                 error: error.message
             }
         );
-
     }
-
 };
 
-export const searchByYearRange = async (req, res, next) => {
-    try {
-        const { startYear, endYear } = req.query;
-
-        if (!startYear || !endYear) {
-            return res.status(400).json(
-                {
-                    success: false,
-                    message: "Please provide both startYear and endYear"
-                }
-            )
-        };
-        if (isNaN(startYear) || isNaN(endYear)) {
-            return res.status(400).json(
-                {
-                    success: false,
-                    message: "both years must be valid numbers",
-                }
-            );
-        };
-
-        // Query parameters are always STRINGS so convert them to numbers :
-        const start = parseInt(startYear);
-        const end = parseInt(endYear);
-
-        if (start > end) {
-            return res.status(400).json(
-                {
-                    success: false,
-                    message: "Start year cannot be greater than end year",
-                }
-            );
-        };
-        if (start < 1900 || end > new Date().getFullYear()) {
-            return res.status(400).json(
-                {
-                    success: false,
-                    message: "Years must be within range (1900 - current year)",
-                }
-            );
-        };
-        const moviesInRange = await Movie.find(
-            {
-                year: {
-                    $gte: start,                 // greater than or equal to satrt year
-                    $lte: end                   // less than or equal to end year
-                }
-            }
-        ).sort({ year: -1 });
-
-        return res.status(200).json(
-            {
-                success: true,
-                message: `Found ${moviesInRange.length} movies form ( ${start} to ${end}) `,
-                moviesInRange
-            }
-        );
 
 
-    } catch (error) {
-        return res.status(500).json(
-            {
-                success: false,
-                message: "Server error while searching by year range",
-                error: error.message
-            }
-        );
 
-    }
-
-};
-
-export const searchByYear = async (req, res, next) => {
-    try {
-        const { year } = req.query;
-        if (!year) {
-            return res.status(400).json(
-                {
-                    success: false,
-                    message: "Please provide a year to search"
-                }
-            );
-        };
-
-        const targetYear = parseInt(year);
-
-        if (isNaN(targetYear) || targetYear < 1900 || targetYear > new Date().getFullYear()) {
-            return res.status(400).json(
-                {
-                    success: false,
-                    message: "year must be a valid number within ( 1900 - current year)",
-                }
-            );
-        };
-
-        const movies = await Movie.find(
-            {
-                year: {
-                    $eq: targetYear
-                }
-            }
-        ).sort({ year: -1 });
-        return res.status(200).json(
-            {
-                success: true,
-                message: `Found ${movies.length} movies in ${targetYear}`,
-                movies
-            }
-        );
-
-    } catch (error) {
-        return res.status(500).json(
-            {
-                success: false,
-                message: "Server error while searching by year",
-                error: error.message
-            }
-        );
-
-    }
-
-}
 
 
