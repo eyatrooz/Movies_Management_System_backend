@@ -1,6 +1,8 @@
 import bcrypt from "bcryptjs";  // needed this to hash User's password
+import jwt from "jsonwebtoken";
 import User from "../Model/user.model.js";
-import { registerSchema } from "../Utils/validation.js";
+import { loginSchema, registerSchema } from "../Utils/validation.js";
+
 
 
 
@@ -74,4 +76,82 @@ export const register = async (req, res) => {
         });
 
     }
+};
+
+export const logIn = async (req, res) => {
+    try {
+
+        // validate input data with zod schema
+        const validationResault = loginSchema.safeParse(req.body);
+
+        if (!validationResault) {
+            return res.status(400).json(
+                {
+                    success: false,
+                    message: "Validation failed",
+                    errors: validationResault.error.errors.map(e => e.message)
+                }
+            );
+        };
+
+        const { email, password } = validationResault.data;
+
+        // find user by email
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(400).json(
+                {
+                    success: false,
+                    message: "Invalid email or password"
+                }
+            );
+        };
+        // compare password with hashed password 
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+        if (!isPasswordValid) {
+            return res.status(400).json(
+                {
+                    success: false,
+                    message: "Invlaid email or password"
+                }
+            );
+        };
+
+        const token = jwt.sign(
+            {
+                userId: user._id,
+                email: user.email,
+                role: user.role
+            },
+            process.env.JWT_ACCESS_SECRET,
+            { expiresIn: process.env.JWT_ACCESS_EXPIRES_IN },
+
+        );
+
+        // Send success response with token
+        return res.status(200).json(
+            {
+                success: true,
+                message: "Login successfull",
+                token: token,
+                user: {
+                    id: user._id,
+                    email: user.email,
+                    role: user.role
+                }
+            }
+        );
+
+    } catch (error) {
+        console.log(`Login error : ${error.message}`);
+        return res.status(500).json(
+            {
+                success: false,
+                message: "Internal server error ocurr during login",
+                error: error.message
+            }
+        );
+
+    }
+
 };
